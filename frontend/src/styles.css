@@ -1,0 +1,42 @@
+:root {
+  font-family: Arial, sans-serif;
+  color: #1f2937;
+  background: #f7f8fa;
+}
+
+body {
+  margin: 0;
+}
+
+.app-shell {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  min-height: 100vh;
+}
+
+.sidebar {
+  background: #111827;
+  color: white;
+  padding: 24px;
+}
+
+.sidebar nav {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sidebar a {
+  color: #d1d5db;
+  text-decoration: none;
+}
+
+.main-content {
+  padding: 32px;
+}
+
+.page {
+  background: white;
+  border-radius: 12px;
+  padding: 24px;
+}
