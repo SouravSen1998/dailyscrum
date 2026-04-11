@@ -60,7 +60,7 @@ def _jira_search():
             "jql": jql,
             "maxResults": 50,
             "fields": ["*all"],
-            "expand": ["names"],
+            "expand": "names",
         }
 
         response = requests.post(
