@@ -49,25 +49,43 @@ def _jira_search():
 
     base_url = _normalize_jira_base_url(current_app.config["JIRA_BASE_URL"])
     jql = current_app.config.get("JIRA_JQL") or "ORDER BY updated DESC"
-    search_url = f"{base_url}/rest/api/3/search/jql"
+    search_jql_url = f"{base_url}/rest/api/3/search/jql"
+    search_url = f"{base_url}/rest/api/3/search"
     auth = (
         current_app.config["JIRA_EMAIL"],
         current_app.config["JIRA_API_TOKEN"],
     )
 
     try:
-        response = requests.get(
-            search_url,
-            params={
-                "jql": jql,
-                "maxResults": 50,
-                "fields": "*all",
-                "expand": "names",
-            },
+        request_body = {
+            "jql": jql,
+            "maxResults": 50,
+            "fields": ["*all"],
+            "expand": ["names"],
+        }
+
+        response = requests.post(
+            search_jql_url,
+            json=request_body,
             auth=auth,
-            headers={"Accept": "application/json"},
+            headers={
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+            },
             timeout=15,
         )
+
+        if response.status_code == 410:
+            response = requests.post(
+                search_url,
+                json=request_body,
+                auth=auth,
+                headers={
+                    "Accept": "application/json",
+                    "Content-Type": "application/json",
+                },
+                timeout=15,
+            )
     except requests.exceptions.RequestException as exc:
         return {
             "ok": False,
