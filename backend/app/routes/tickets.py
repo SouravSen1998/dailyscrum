@@ -75,9 +75,9 @@ def _jira_search():
             timeout=15,
         )
 
-        # Some Jira deployments reject /search/jql with 400 even for valid payloads.
-        # Fall back to the broadly supported /search endpoint in that case.
-        if response.status_code in (400, 404, 405, 410):
+        # Legacy Jira deployments may not support /search/jql yet.
+        # Only fall back when the endpoint is unavailable.
+        if response.status_code in (404, 405):
             response = requests.post(
                 search_url,
                 json=request_body,
