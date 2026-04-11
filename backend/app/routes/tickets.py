@@ -5,6 +5,27 @@ import requests
 tickets_bp = Blueprint("tickets", __name__)
 
 
+def _normalize_jira_base_url(raw_base_url):
+    if not raw_base_url:
+        return raw_base_url
+
+    normalized = raw_base_url.rstrip("/")
+    suffixes_to_trim = (
+        "/rest/api/3/search/jql",
+        "/rest/api/3/search",
+        "/rest/api/2/search",
+        "/rest/api/3",
+        "/rest/api/2",
+        "/rest/api",
+    )
+
+    for suffix in suffixes_to_trim:
+        if normalized.endswith(suffix):
+            return normalized[: -len(suffix)]
+
+    return normalized
+
+
 def _jira_config_errors():
     missing = []
     if not current_app.config.get("JIRA_BASE_URL"):
@@ -26,7 +47,7 @@ def _jira_search():
             "data": [],
         }
 
-    base_url = current_app.config["JIRA_BASE_URL"].rstrip("/")
+    base_url = _normalize_jira_base_url(current_app.config["JIRA_BASE_URL"])
     jql = current_app.config.get("JIRA_JQL") or "ORDER BY updated DESC"
     search_url = f"{base_url}/rest/api/3/search/jql"
     auth = (
@@ -35,9 +56,9 @@ def _jira_search():
     )
 
     try:
-        response = requests.get(
+        response = requests.post(
             search_url,
-            params={
+            json={
                 "jql": jql,
                 "maxResults": 50,
                 "fields": "*all",
