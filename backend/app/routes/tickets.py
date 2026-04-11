@@ -1,3 +1,5 @@
+import re
+
 from flask import Blueprint, current_app, jsonify, request
 import requests
 
@@ -6,6 +8,13 @@ from app.models import TicketNote
 
 
 tickets_bp = Blueprint("tickets", __name__)
+
+STATUS_CLAUSE_PATTERN = re.compile(r"\bstatus\s+NOT\s+IN\s*\([^)]*\)", re.IGNORECASE)
+TICKET_CATEGORIES = {
+    "active": None,
+    "resolved": 'status IN (Resolved, Canceled, Closed, "Ticket Shelved")',
+    "roadmap": 'status = "Roadmap Candidate"',
+}
 
 
 def _normalize_jira_base_url(raw_base_url):
@@ -40,7 +49,54 @@ def _jira_config_errors():
     return missing
 
 
-def _jira_search():
+def _jql_for_category(category):
+    base_jql = current_app.config.get("JIRA_JQL") or "ORDER BY updated DESC"
+    status_clause = TICKET_CATEGORIES.get(category)
+    if not status_clause:
+        return base_jql
+
+    if STATUS_CLAUSE_PATTERN.search(base_jql):
+        return STATUS_CLAUSE_PATTERN.sub(status_clause, base_jql, count=1)
+
+    order_by_match = re.search(r"\s+ORDER\s+BY\s+", base_jql, re.IGNORECASE)
+    if order_by_match:
+        filters = base_jql[: order_by_match.start()]
+        order_by = base_jql[order_by_match.start() :]
+        return f"{filters} AND {status_clause}{order_by}"
+
+    return f"{base_jql} AND {status_clause}"
+
+
+def _jira_auth():
+    return (
+        current_app.config["JIRA_EMAIL"],
+        current_app.config["JIRA_API_TOKEN"],
+    )
+
+
+def _adf_to_text(node):
+    if node is None:
+        return ""
+    if isinstance(node, str):
+        return node
+    if isinstance(node, list):
+        return "".join(_adf_to_text(item) for item in node)
+    if not isinstance(node, dict):
+        return str(node)
+
+    text = node.get("text", "")
+    content = _adf_to_text(node.get("content", []))
+    node_type = node.get("type")
+    if node_type in ("paragraph", "heading", "listItem"):
+        return f"{content}\n"
+    if node_type in ("bulletList", "orderedList"):
+        return f"{content}\n"
+    if node_type == "hardBreak":
+        return "\n"
+    return f"{text}{content}"
+
+
+def _jira_search(category="active"):
     missing = _jira_config_errors()
     if missing:
         return {
@@ -51,17 +107,14 @@ def _jira_search():
         }
 
     base_url = _normalize_jira_base_url(current_app.config["JIRA_BASE_URL"])
-    jql = current_app.config.get("JIRA_JQL") or "ORDER BY updated DESC"
+    jql = _jql_for_category(category)
     search_jql_url = f"{base_url}/rest/api/3/search/jql"
     client_name_field_id = current_app.config.get("JIRA_CLIENT_NAME_FIELD_ID")
     l0_assignee_field_id = current_app.config.get("JIRA_L0_ASSIGNEE_FIELD_ID")
     pcmc_inclusion_date_field_id = current_app.config.get(
         "JIRA_PCMC_INCLUSION_DATE_FIELD_ID"
     )
-    auth = (
-        current_app.config["JIRA_EMAIL"],
-        current_app.config["JIRA_API_TOKEN"],
-    )
+    auth = _jira_auth()
 
     try:
         request_body = {
@@ -174,7 +227,20 @@ def _jira_search():
 
 @tickets_bp.route("/", methods=["GET"])
 def get_tickets():
-    result = _jira_search()
+    category = request.args.get("category", "active").strip().lower()
+    if category not in TICKET_CATEGORIES:
+        return (
+            jsonify(
+                {
+                    "data": [],
+                    "total": 0,
+                    "message": f"Unsupported ticket category: {category}",
+                }
+            ),
+            400,
+        )
+
+    result = _jira_search(category)
     return (
         jsonify(
             {
@@ -189,7 +255,21 @@ def get_tickets():
 
 @tickets_bp.route("/sync", methods=["POST"])
 def sync_tickets():
-    result = _jira_search()
+    category = request.args.get("category", "active").strip().lower()
+    if category not in TICKET_CATEGORIES:
+        return (
+            jsonify(
+                {
+                    "synced": False,
+                    "count": 0,
+                    "message": f"Unsupported ticket category: {category}",
+                    "data": [],
+                }
+            ),
+            400,
+        )
+
+    result = _jira_search(category)
     return (
         jsonify(
             {
@@ -200,6 +280,68 @@ def sync_tickets():
             }
         ),
         result["status"],
+    )
+
+
+@tickets_bp.route("/<ticket_key>/comments", methods=["GET"])
+def get_ticket_comments(ticket_key):
+    missing = _jira_config_errors()
+    if missing:
+        return (
+            jsonify(
+                {
+                    "data": [],
+                    "message": f"Missing Jira configuration: {', '.join(missing)}",
+                }
+            ),
+            400,
+        )
+
+    base_url = _normalize_jira_base_url(current_app.config["JIRA_BASE_URL"])
+    comments_url = f"{base_url}/rest/api/3/issue/{ticket_key}/comment"
+
+    try:
+        response = requests.get(
+            comments_url,
+            params={"orderBy": "-created", "maxResults": 100},
+            auth=_jira_auth(),
+            headers={"Accept": "application/json"},
+            timeout=15,
+        )
+    except requests.exceptions.RequestException as exc:
+        return jsonify({"data": [], "message": f"Unable to reach Jira: {exc}"}), 502
+
+    if response.status_code >= 400:
+        details = response.text[:300]
+        return (
+            jsonify(
+                {
+                    "data": [],
+                    "message": f"Jira API error ({response.status_code}): {details}",
+                }
+            ),
+            response.status_code,
+        )
+
+    comments = []
+    for comment in response.json().get("comments", []):
+        author = comment.get("author") or {}
+        comments.append(
+            {
+                "id": comment.get("id"),
+                "author": author.get("displayName"),
+                "created": comment.get("created"),
+                "updated": comment.get("updated"),
+                "body": _adf_to_text(comment.get("body")).strip(),
+            }
+        )
+
+    return jsonify(
+        {
+            "data": comments,
+            "message": "Jira comments fetched successfully",
+            "total": len(comments),
+        }
     )
 
 
