@@ -1,5 +1,8 @@
-from flask import Blueprint, current_app, jsonify
+from flask import Blueprint, current_app, jsonify, request
 import requests
+
+from app.extensions import db
+from app.models import TicketNote
 
 
 tickets_bp = Blueprint("tickets", __name__)
@@ -105,6 +108,11 @@ def _jira_search():
     payload = response.json()
     issues = payload.get("issues", [])
     field_names = payload.get("names", {})
+    issue_keys = [issue.get("key") for issue in issues if issue.get("key")]
+    notes_by_ticket_key = {
+        note.ticket_key: note.note
+        for note in TicketNote.query.filter(TicketNote.ticket_key.in_(issue_keys)).all()
+    }
 
     def field_id_for(label):
         label_lower = label.strip().lower()
@@ -138,10 +146,12 @@ def _jira_search():
         priority = fields.get("priority") or {}
         status = fields.get("status") or {}
         pcmc_inclusion_date = normalize_value(fields.get(pcmc_inclusion_date_field_id))
+        ticket_key = issue.get("key")
 
         normalized.append(
             {
-                "key": issue.get("key"),
+                "key": ticket_key,
+                "browse_url": f"{base_url}/browse/{ticket_key}" if ticket_key else None,
                 "summary": fields.get("summary"),
                 "status": status.get("name"),
                 "client_name": normalize_value(fields.get(client_name_field_id)),
@@ -149,6 +159,7 @@ def _jira_search():
                 "l0_assignee": normalize_value(fields.get(l0_assignee_field_id)),
                 "pcmc_inclusion_date": pcmc_inclusion_date,
                 "is_pcmc_ticket": bool(pcmc_inclusion_date),
+                "scrum_note": notes_by_ticket_key.get(ticket_key, ""),
             }
         )
 
@@ -189,4 +200,30 @@ def sync_tickets():
             }
         ),
         result["status"],
+    )
+
+
+@tickets_bp.route("/<ticket_key>/note", methods=["PUT"])
+def save_ticket_note(ticket_key):
+    payload = request.get_json(silent=True) or {}
+    note_text = (payload.get("note") or "").strip()
+
+    ticket_note = TicketNote.query.filter_by(ticket_key=ticket_key).one_or_none()
+    if ticket_note is None:
+        ticket_note = TicketNote(ticket_key=ticket_key, note=note_text)
+        db.session.add(ticket_note)
+    else:
+        ticket_note.note = note_text
+
+    db.session.commit()
+
+    return jsonify(
+        {
+            "data": {
+                "ticket_key": ticket_note.ticket_key,
+                "note": ticket_note.note,
+                "updated_at": ticket_note.updated_at.isoformat(),
+            },
+            "message": "Scrum note saved successfully",
+        }
     )
