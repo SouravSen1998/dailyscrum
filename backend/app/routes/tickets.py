@@ -50,7 +50,6 @@ def _jira_search():
     base_url = _normalize_jira_base_url(current_app.config["JIRA_BASE_URL"])
     jql = current_app.config.get("JIRA_JQL") or "ORDER BY updated DESC"
     search_jql_url = f"{base_url}/rest/api/3/search/jql"
-    search_url = f"{base_url}/rest/api/3/search"
     auth = (
         current_app.config["JIRA_EMAIL"],
         current_app.config["JIRA_API_TOKEN"],
@@ -74,20 +73,6 @@ def _jira_search():
             },
             timeout=15,
         )
-
-        # Some Jira deployments reject /search/jql with 400 even for valid payloads.
-        # Fall back to the broadly supported /search endpoint in that case.
-        if response.status_code in (400, 404, 405, 410):
-            response = requests.post(
-                search_url,
-                json=request_body,
-                auth=auth,
-                headers={
-                    "Accept": "application/json",
-                    "Content-Type": "application/json",
-                },
-                timeout=15,
-            )
     except requests.exceptions.RequestException as exc:
         return {
             "ok": False,
