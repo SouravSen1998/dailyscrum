@@ -50,6 +50,11 @@ def _jira_search():
     base_url = _normalize_jira_base_url(current_app.config["JIRA_BASE_URL"])
     jql = current_app.config.get("JIRA_JQL") or "ORDER BY updated DESC"
     search_jql_url = f"{base_url}/rest/api/3/search/jql"
+    client_name_field_id = current_app.config.get("JIRA_CLIENT_NAME_FIELD_ID")
+    l0_assignee_field_id = current_app.config.get("JIRA_L0_ASSIGNEE_FIELD_ID")
+    pcmc_inclusion_date_field_id = current_app.config.get(
+        "JIRA_PCMC_INCLUSION_DATE_FIELD_ID"
+    )
     auth = (
         current_app.config["JIRA_EMAIL"],
         current_app.config["JIRA_API_TOKEN"],
@@ -59,7 +64,14 @@ def _jira_search():
         request_body = {
             "jql": jql,
             "maxResults": 50,
-            "fields": ["*all"],
+            "fields": [
+                "summary",
+                "status",
+                "priority",
+                client_name_field_id,
+                l0_assignee_field_id,
+                pcmc_inclusion_date_field_id,
+            ],
             "expand": "names",
         }
 
@@ -114,16 +126,18 @@ def _jira_search():
             return ", ".join([item for item in normalized_values if item]) or None
         return value
 
-    client_name_field_id = field_id_for("Client Name")
-    l0_assignee_field_id = field_id_for("L0 Assignee")
-    pcmc_inclusion_date_field_id = field_id_for("PCMC Inclusion date")
+    client_name_field_id = client_name_field_id or field_id_for("Client Name")
+    l0_assignee_field_id = l0_assignee_field_id or field_id_for("L0 TES Assignee")
+    pcmc_inclusion_date_field_id = (
+        pcmc_inclusion_date_field_id or field_id_for("PCMC Inclusion Date")
+    )
 
     normalized = []
     for issue in issues:
         fields = issue.get("fields", {})
-        assignee = fields.get("assignee") or {}
         priority = fields.get("priority") or {}
         status = fields.get("status") or {}
+        pcmc_inclusion_date = normalize_value(fields.get(pcmc_inclusion_date_field_id))
 
         normalized.append(
             {
@@ -132,9 +146,9 @@ def _jira_search():
                 "status": status.get("name"),
                 "client_name": normalize_value(fields.get(client_name_field_id)),
                 "priority": priority.get("name"),
-                "l0_assignee": normalize_value(fields.get(l0_assignee_field_id))
-                or assignee.get("displayName"),
-                "pcmc_inclusion_date": fields.get(pcmc_inclusion_date_field_id),
+                "l0_assignee": normalize_value(fields.get(l0_assignee_field_id)),
+                "pcmc_inclusion_date": pcmc_inclusion_date,
+                "is_pcmc_ticket": bool(pcmc_inclusion_date),
             }
         )
 

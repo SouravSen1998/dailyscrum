@@ -30,13 +30,13 @@ function DashboardPage() {
   }, []);
 
   const filteredTickets = hidePcmc
-    ? tickets.filter((ticket) => !ticket.pcmc_inclusion_date)
+    ? tickets.filter((ticket) => !ticket.is_pcmc_ticket && !ticket.pcmc_inclusion_date)
     : tickets;
 
   return (
     <div className="page">
       <h1>Support Dashboard</h1>
-      <p>Showing latest tickets from backend.</p>
+  
 
       {loading && <p>Loading tickets...</p>}
 
