@@ -40,3 +40,34 @@ body {
   border-radius: 12px;
   padding: 24px;
 }
+
+.error-text {
+  color: #b91c1c;
+}
+
+.ticket-count {
+  font-weight: 600;
+}
+
+.table-wrapper {
+  overflow-x: auto;
+}
+
+.ticket-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 16px;
+}
+
+.ticket-table th,
+.ticket-table td {
+  border-bottom: 1px solid #e5e7eb;
+  text-align: left;
+  padding: 12px 10px;
+  vertical-align: top;
+}
+
+.ticket-table th {
+  background: #f3f4f6;
+  font-size: 14px;
+}
