@@ -73,23 +73,6 @@ def _jira_search():
             },
             timeout=15,
         )
-<<<<<<< HEAD
-=======
-
-        # Legacy Jira deployments may not support /search/jql yet.
-        # Only fall back when the endpoint is unavailable.
-        if response.status_code in (404, 405):
-            response = requests.post(
-                search_url,
-                json=request_body,
-                auth=auth,
-                headers={
-                    "Accept": "application/json",
-                    "Content-Type": "application/json",
-                },
-                timeout=15,
-            )
->>>>>>> 5035fe740c31483f1d7d575e7b682e8b24215fb3
     except requests.exceptions.RequestException as exc:
         return {
             "ok": False,
