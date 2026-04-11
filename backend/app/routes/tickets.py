@@ -49,16 +49,16 @@ def _jira_search():
 
     base_url = _normalize_jira_base_url(current_app.config["JIRA_BASE_URL"])
     jql = current_app.config.get("JIRA_JQL") or "ORDER BY updated DESC"
-    search_url = f"{base_url}/rest/api/3/search/jql"
+    search_url = f"{base_url}/rest/api/3/search"
     auth = (
         current_app.config["JIRA_EMAIL"],
         current_app.config["JIRA_API_TOKEN"],
     )
 
     try:
-        response = requests.post(
+        response = requests.get(
             search_url,
-            json={
+            params={
                 "jql": jql,
                 "maxResults": 50,
                 "fields": "*all",
