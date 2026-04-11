@@ -40,7 +40,8 @@ def _jira_search():
             json={
                 "jql": jql,
                 "maxResults": 50,
-                "fields": ["summary", "status", "priority", "assignee", "updated"],
+                "fields": ["*all"],
+                "expand": ["names"],
             },
             auth=auth,
             headers={"Accept": "application/json", "Content-Type": "application/json"},
@@ -65,6 +66,32 @@ def _jira_search():
 
     payload = response.json()
     issues = payload.get("issues", [])
+    field_names = payload.get("names", {})
+
+    def field_id_for(label):
+        label_lower = label.strip().lower()
+        for field_id, name in field_names.items():
+            if (name or "").strip().lower() == label_lower:
+                return field_id
+        return None
+
+    def normalize_value(value):
+        if value is None:
+            return None
+        if isinstance(value, dict):
+            for key in ("displayName", "name", "value"):
+                if value.get(key):
+                    return value.get(key)
+            return str(value)
+        if isinstance(value, list):
+            normalized_values = [normalize_value(item) for item in value]
+            return ", ".join([item for item in normalized_values if item]) or None
+        return value
+
+    client_name_field_id = field_id_for("Client Name")
+    l0_assignee_field_id = field_id_for("L0 Assignee")
+    pcmc_inclusion_date_field_id = field_id_for("PCMC Inclusion date")
+
     normalized = []
     for issue in issues:
         fields = issue.get("fields", {})
@@ -77,9 +104,11 @@ def _jira_search():
                 "key": issue.get("key"),
                 "summary": fields.get("summary"),
                 "status": status.get("name"),
+                "client_name": normalize_value(fields.get(client_name_field_id)),
                 "priority": priority.get("name"),
-                "assignee": assignee.get("displayName"),
-                "updated": fields.get("updated"),
+                "l0_assignee": normalize_value(fields.get(l0_assignee_field_id))
+                or assignee.get("displayName"),
+                "pcmc_inclusion_date": fields.get(pcmc_inclusion_date_field_id),
             }
         )
 

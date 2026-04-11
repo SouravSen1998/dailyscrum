@@ -4,9 +4,9 @@ import client from "./api/client";
 
 function DashboardPage() {
   const [tickets, setTickets] = useState([]);
-  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [hidePcmc, setHidePcmc] = useState(false);
 
   useEffect(() => {
     const fetchTickets = async () => {
@@ -14,7 +14,6 @@ function DashboardPage() {
         setLoading(true);
         const response = await client.get("/tickets/");
         setTickets(response.data?.data ?? []);
-        setTotal(response.data?.total ?? 0);
         setError("");
       } catch (fetchError) {
         const message =
@@ -30,6 +29,10 @@ function DashboardPage() {
     fetchTickets();
   }, []);
 
+  const filteredTickets = hidePcmc
+    ? tickets.filter((ticket) => !ticket.pcmc_inclusion_date)
+    : tickets;
+
   return (
     <div className="page">
       <h1>Support Dashboard</h1>
@@ -41,8 +44,18 @@ function DashboardPage() {
 
       {!loading && !error && (
         <>
-          <p className="ticket-count">Total tickets: {total}</p>
-          {tickets.length === 0 ? (
+          <div className="toolbar">
+            <p className="ticket-count">Total tickets: {filteredTickets.length}</p>
+            <label className="filter-toggle">
+              <input
+                type="checkbox"
+                checked={hidePcmc}
+                onChange={(event) => setHidePcmc(event.target.checked)}
+              />
+              Filter out PCMC tickets
+            </label>
+          </div>
+          {filteredTickets.length === 0 ? (
             <p>No tickets found.</p>
           ) : (
             <div className="table-wrapper">
@@ -52,24 +65,20 @@ function DashboardPage() {
                     <th>Key</th>
                     <th>Summary</th>
                     <th>Status</th>
+                    <th>Client Name</th>
                     <th>Priority</th>
-                    <th>Assignee</th>
-                    <th>Updated</th>
+                    <th>L0 Assignee</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {tickets.map((ticket) => (
+                  {filteredTickets.map((ticket) => (
                     <tr key={ticket.key}>
                       <td>{ticket.key || "-"}</td>
                       <td>{ticket.summary || "-"}</td>
                       <td>{ticket.status || "-"}</td>
+                      <td>{ticket.client_name || "-"}</td>
                       <td>{ticket.priority || "-"}</td>
-                      <td>{ticket.assignee || "Unassigned"}</td>
-                      <td>
-                        {ticket.updated
-                          ? new Date(ticket.updated).toLocaleString()
-                          : "-"}
-                      </td>
+                      <td>{ticket.l0_assignee || "Unassigned"}</td>
                     </tr>
                   ))}
                 </tbody>

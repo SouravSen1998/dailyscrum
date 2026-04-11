@@ -49,6 +49,21 @@ body {
   font-weight: 600;
 }
 
+.toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.filter-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
 .table-wrapper {
   overflow-x: auto;
 }
