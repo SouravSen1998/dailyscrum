@@ -18,3 +18,6 @@ class Config:
     JIRA_PCMC_INCLUSION_DATE_FIELD_ID = os.getenv(
         "JIRA_PCMC_INCLUSION_DATE_FIELD_ID", "customfield_11590"
     )
+    JIRA_IMPACT_MODULE_FIELD_ID = os.getenv(
+        "JIRA_IMPACT_MODULE_FIELD_ID", "customfield_12860"
+    )

@@ -1,3 +1,5 @@
+from collections import Counter, defaultdict
+from datetime import datetime
 import re
 
 from flask import Blueprint, current_app, jsonify, request
@@ -96,6 +98,40 @@ def _adf_to_text(node):
     return f"{text}{content}"
 
 
+def _normalize_jira_value(value):
+    if value is None:
+        return None
+    if isinstance(value, dict):
+        for key in ("displayName", "name", "value"):
+            if value.get(key):
+                return value.get(key)
+        return str(value)
+    if isinstance(value, list):
+        normalized_values = [_normalize_jira_value(item) for item in value]
+        return ", ".join([item for item in normalized_values if item]) or None
+    return value
+
+
+def _normalize_jira_values(value):
+    if value is None:
+        return []
+    if isinstance(value, list):
+        normalized_values = [_normalize_jira_value(item) for item in value]
+        return [item for item in normalized_values if item]
+    normalized_value = _normalize_jira_value(value)
+    return [normalized_value] if normalized_value else []
+
+
+def _jira_created_month(created):
+    if not created:
+        return "No date"
+    try:
+        created_date = datetime.strptime(created, "%Y-%m-%dT%H:%M:%S.%f%z")
+    except ValueError:
+        return created[:7]
+    return created_date.strftime("%Y-%m")
+
+
 def _jira_search(category="active"):
     missing = _jira_config_errors()
     if missing:
@@ -174,19 +210,6 @@ def _jira_search(category="active"):
                 return field_id
         return None
 
-    def normalize_value(value):
-        if value is None:
-            return None
-        if isinstance(value, dict):
-            for key in ("displayName", "name", "value"):
-                if value.get(key):
-                    return value.get(key)
-            return str(value)
-        if isinstance(value, list):
-            normalized_values = [normalize_value(item) for item in value]
-            return ", ".join([item for item in normalized_values if item]) or None
-        return value
-
     client_name_field_id = client_name_field_id or field_id_for("Client Name")
     l0_assignee_field_id = l0_assignee_field_id or field_id_for("L0 TES Assignee")
     pcmc_inclusion_date_field_id = (
@@ -198,7 +221,9 @@ def _jira_search(category="active"):
         fields = issue.get("fields", {})
         priority = fields.get("priority") or {}
         status = fields.get("status") or {}
-        pcmc_inclusion_date = normalize_value(fields.get(pcmc_inclusion_date_field_id))
+        pcmc_inclusion_date = _normalize_jira_value(
+            fields.get(pcmc_inclusion_date_field_id)
+        )
         ticket_key = issue.get("key")
 
         normalized.append(
@@ -207,9 +232,9 @@ def _jira_search(category="active"):
                 "browse_url": f"{base_url}/browse/{ticket_key}" if ticket_key else None,
                 "summary": fields.get("summary"),
                 "status": status.get("name"),
-                "client_name": normalize_value(fields.get(client_name_field_id)),
+                "client_name": _normalize_jira_value(fields.get(client_name_field_id)),
                 "priority": priority.get("name"),
-                "l0_assignee": normalize_value(fields.get(l0_assignee_field_id)),
+                "l0_assignee": _normalize_jira_value(fields.get(l0_assignee_field_id)),
                 "pcmc_inclusion_date": pcmc_inclusion_date,
                 "is_pcmc_ticket": bool(pcmc_inclusion_date),
                 "scrum_note": notes_by_ticket_key.get(ticket_key, ""),
@@ -280,6 +305,173 @@ def sync_tickets():
             }
         ),
         result["status"],
+    )
+
+
+@tickets_bp.route("/impact-module-analysis", methods=["GET"])
+def impact_module_analysis():
+    missing = _jira_config_errors()
+    if missing:
+        return (
+            jsonify(
+                {
+                    "data": {},
+                    "message": f"Missing Jira configuration: {', '.join(missing)}",
+                }
+            ),
+            400,
+        )
+
+    category = request.args.get("category", "active").strip().lower()
+    if category not in TICKET_CATEGORIES:
+        return (
+            jsonify(
+                {
+                    "data": {},
+                    "message": f"Unsupported ticket category: {category}",
+                }
+            ),
+            400,
+        )
+
+    base_url = _normalize_jira_base_url(current_app.config["JIRA_BASE_URL"])
+    search_jql_url = f"{base_url}/rest/api/3/search/jql"
+    client_name_field_id = current_app.config.get("JIRA_CLIENT_NAME_FIELD_ID")
+    impact_module_field_id = current_app.config.get("JIRA_IMPACT_MODULE_FIELD_ID")
+
+    try:
+        issues = []
+        total = 0
+        next_page_token = None
+
+        while True:
+            request_body = {
+                "jql": _jql_for_category(category),
+                "maxResults": 100,
+                "fields": [
+                    "summary",
+                    "created",
+                    client_name_field_id,
+                    impact_module_field_id,
+                ],
+                "expand": "names",
+            }
+            if next_page_token:
+                request_body["nextPageToken"] = next_page_token
+
+            response = requests.post(
+                search_jql_url,
+                json=request_body,
+                auth=_jira_auth(),
+                headers={
+                    "Accept": "application/json",
+                    "Content-Type": "application/json",
+                },
+                timeout=20,
+            )
+
+            if response.status_code >= 400:
+                details = response.text[:300]
+                return (
+                    jsonify(
+                        {
+                            "data": {},
+                            "message": (
+                                f"Jira API error ({response.status_code}): {details}"
+                            ),
+                        }
+                    ),
+                    response.status_code,
+                )
+
+            page_payload = response.json()
+            issues.extend(page_payload.get("issues", []))
+            total = page_payload.get("total", len(issues))
+            next_page_token = page_payload.get("nextPageToken")
+            if not next_page_token:
+                break
+    except requests.exceptions.RequestException as exc:
+        return jsonify({"data": {}, "message": f"Unable to reach Jira: {exc}"}), 502
+
+    module_counts = Counter()
+    client_counts = Counter()
+    month_counts = Counter()
+    client_month_counts = defaultdict(Counter)
+    client_module_counts = defaultdict(Counter)
+    tickets = []
+
+    for issue in issues:
+        fields = issue.get("fields", {})
+        ticket_key = issue.get("key")
+        client_name = (
+            _normalize_jira_value(fields.get(client_name_field_id)) or "No client"
+        )
+        created_month = _jira_created_month(fields.get("created"))
+        impact_modules = _normalize_jira_values(fields.get(impact_module_field_id)) or [
+            "Not specified"
+        ]
+
+        for module in impact_modules:
+            module_counts[module] += 1
+            client_counts[client_name] += 1
+            month_counts[created_month] += 1
+            client_month_counts[client_name][created_month] += 1
+            client_module_counts[client_name][module] += 1
+            tickets.append(
+                {
+                    "key": ticket_key,
+                    "browse_url": (
+                        f"{base_url}/browse/{ticket_key}" if ticket_key else None
+                    ),
+                    "summary": fields.get("summary"),
+                    "client_name": client_name,
+                    "impact_module": module,
+                    "created_month": created_month,
+                }
+            )
+
+    months = sorted(month_counts.keys())
+    top_clients = [client for client, _ in client_counts.most_common(5)]
+
+    return jsonify(
+        {
+            "data": {
+                "category": category,
+                "total": total,
+                "analyzed_tickets": len(issues),
+                "module_counts": [
+                    {"module": module, "count": count}
+                    for module, count in module_counts.most_common()
+                ],
+                "client_module_counts": [
+                    {
+                        "client_name": client_name,
+                        "module": module,
+                        "count": count,
+                    }
+                    for client_name, modules in client_module_counts.items()
+                    for module, count in modules.most_common()
+                ],
+                "month_counts": [
+                    {"month": month, "count": month_counts[month]} for month in months
+                ],
+                "client_month_trends": [
+                    {
+                        "client_name": client_name,
+                        "points": [
+                            {
+                                "month": month,
+                                "count": client_month_counts[client_name][month],
+                            }
+                            for month in months
+                        ],
+                    }
+                    for client_name in top_clients
+                ],
+                "tickets": tickets,
+            },
+            "message": "Impact module analysis fetched successfully",
+        }
     )
 
 

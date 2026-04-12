@@ -57,6 +57,7 @@ input {
   display: flex;
   align-items: center;
   gap: 6px;
+  flex-wrap: wrap;
 }
 
 .topbar a {
@@ -120,6 +121,148 @@ input {
   border: 1px solid #dfe3eb;
   border-radius: 8px;
   background: #ffffff;
+}
+
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(160px, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.metric-box,
+.analysis-panel {
+  border: 1px solid #dfe3eb;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.metric-box {
+  padding: 14px;
+}
+
+.analysis-grid {
+  display: grid;
+  grid-template-columns: minmax(320px, 0.9fr) minmax(420px, 1.1fr);
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.analysis-panel {
+  padding: 16px;
+}
+
+.section-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: baseline;
+  margin-bottom: 14px;
+}
+
+.section-heading h2 {
+  margin: 0;
+  color: #111827;
+  font-size: 18px;
+}
+
+.section-heading p {
+  margin: 0;
+  color: #6b7280;
+  font-size: 13px;
+}
+
+.chart-bars {
+  display: flex;
+  align-items: end;
+  gap: 12px;
+  min-height: 270px;
+  overflow-x: auto;
+  padding: 8px 0 2px;
+}
+
+.chart-bar-row {
+  display: grid;
+  grid-template-rows: 24px 190px 44px;
+  justify-items: center;
+  gap: 8px;
+  min-width: 72px;
+}
+
+.chart-label {
+  align-self: end;
+  color: #4b5563;
+  font-size: 11px;
+  line-height: 1.2;
+  max-width: 90px;
+  overflow-wrap: anywhere;
+  text-align: center;
+}
+
+.chart-bar-track {
+  position: relative;
+  align-self: stretch;
+  width: 42px;
+  border: 1px solid #c9d3e1;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.chart-bar-fill {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: block;
+  border-radius: 7px;
+  background: #155fa8;
+}
+
+.chart-value {
+  color: #111827;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.trend-chart {
+  overflow-x: auto;
+}
+
+.trend-chart svg {
+  min-width: 620px;
+  width: 100%;
+}
+
+.chart-axis {
+  stroke: #c9d3e1;
+  stroke-width: 1;
+}
+
+.chart-tick {
+  fill: #6b7280;
+  font-size: 11px;
+}
+
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  margin-top: 8px;
+}
+
+.chart-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #4b5563;
+  font-size: 12px;
+}
+
+.chart-legend i {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
 }
 
 .tabs {
@@ -195,6 +338,10 @@ input {
   border: 1px solid #dfe3eb;
   border-radius: 8px;
   background: #ffffff;
+}
+
+.table-wrapper.compact {
+  max-height: 360px;
 }
 
 .ticket-table {
@@ -381,6 +528,11 @@ input {
   }
 
   .note-editor {
+    grid-template-columns: 1fr;
+  }
+
+  .metric-grid,
+  .analysis-grid {
     grid-template-columns: 1fr;
   }
 

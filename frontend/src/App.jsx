@@ -2,6 +2,121 @@ import { Fragment, useEffect, useState } from "react";
 import { NavLink, Routes, Route } from "react-router-dom";
 import client from "./api/client";
 
+function VerticalBarChart({ data }) {
+  const maxCount = Math.max(...data.map((item) => item.count), 1);
+
+  return (
+    <div className="chart-bars" aria-label="Impact module ticket count chart">
+      {data.map((item) => (
+        <div className="chart-bar-row" key={item.module}>
+          <span className="chart-label">{item.module}</span>
+          <div className="chart-bar-track">
+            <span
+              className="chart-bar-fill"
+              style={{ height: `${Math.max((item.count / maxCount) * 100, 4)}%` }}
+            />
+          </div>
+          <span className="chart-value">{item.count}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function TrendLineChart({ series }) {
+  const months = series[0]?.points?.map((point) => point.month) ?? [];
+  const maxCount = Math.max(
+    ...series.flatMap((item) => item.points.map((point) => point.count)),
+    1
+  );
+  const width = 760;
+  const height = 260;
+  const padding = 36;
+  const colors = ["#155fa8", "#15803d", "#b42318", "#7c3aed", "#b7791f"];
+  const xFor = (index) =>
+    padding +
+    (months.length <= 1
+      ? (width - padding * 2) / 2
+      : (index / (months.length - 1)) * (width - padding * 2));
+  const yFor = (count) =>
+    height - padding - (count / maxCount) * (height - padding * 2);
+
+  return (
+    <div className="trend-chart">
+      <svg viewBox={`0 0 ${width} ${height}`} role="img">
+        <line
+          x1={padding}
+          y1={height - padding}
+          x2={width - padding}
+          y2={height - padding}
+          className="chart-axis"
+        />
+        <line
+          x1={padding}
+          y1={padding}
+          x2={padding}
+          y2={height - padding}
+          className="chart-axis"
+        />
+        {series.map((item, seriesIndex) => {
+          const points = item.points
+            .map((point, pointIndex) => `${xFor(pointIndex)},${yFor(point.count)}`)
+            .join(" ");
+          return (
+            <g key={item.client_name}>
+              <polyline
+                points={points}
+                fill="none"
+                stroke={colors[seriesIndex % colors.length]}
+                strokeWidth="3"
+              />
+              {item.points.map((point, pointIndex) => (
+                <circle
+                  key={`${item.client_name}-${point.month}`}
+                  cx={xFor(pointIndex)}
+                  cy={yFor(point.count)}
+                  r="4"
+                  fill={colors[seriesIndex % colors.length]}
+                />
+              ))}
+            </g>
+          );
+        })}
+        {months.map((month, index) => (
+          <text
+            key={month}
+            x={xFor(index)}
+            y={height - 10}
+            textAnchor="middle"
+            className="chart-tick"
+          >
+            {month}
+          </text>
+        ))}
+        <text x={padding - 8} y={padding} textAnchor="end" className="chart-tick">
+          {maxCount}
+        </text>
+        <text
+          x={padding - 8}
+          y={height - padding}
+          textAnchor="end"
+          className="chart-tick"
+        >
+          0
+        </text>
+      </svg>
+      <div className="chart-legend">
+        {series.map((item, index) => (
+          <span key={item.client_name}>
+            <i style={{ background: colors[index % colors.length] }} />
+            {item.client_name}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function DashboardPage() {
   const ticketCategories = [
     { id: "active", label: "Active" },
@@ -331,6 +446,142 @@ function AssigneeMatrixPage() {
   );
 }
 
+function ImpactModulePage() {
+  const ticketCategories = [
+    { id: "active", label: "Active" },
+    { id: "resolved", label: "Resolved" },
+    { id: "roadmap", label: "Roadmap" },
+  ];
+  const [activeCategory, setActiveCategory] = useState("active");
+  const [analysis, setAnalysis] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    const fetchAnalysis = async () => {
+      try {
+        setLoading(true);
+        const response = await client.get("/tickets/impact-module-analysis", {
+          params: { category: activeCategory },
+        });
+        setAnalysis(response.data?.data ?? null);
+        setError("");
+      } catch (fetchError) {
+        const message =
+          fetchError?.response?.data?.message ||
+          fetchError?.message ||
+          "Unable to load impact module analysis.";
+        setError(message);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchAnalysis();
+  }, [activeCategory]);
+
+  const topModules = analysis?.module_counts?.slice(0, 12) ?? [];
+  const clientTrends = analysis?.client_month_trends ?? [];
+
+  return (
+    <div className="page">
+      <div className="page-header">
+        <div>
+          <p className="eyebrow">Daily Scrum</p>
+          <h1>Analyze Impact Module</h1>
+        </div>
+        <p className="last-updated">Client and date wise</p>
+      </div>
+
+      <div className="tabs" aria-label="Impact module ticket categories">
+        {ticketCategories.map((category) => (
+          <button
+            key={category.id}
+            type="button"
+            className={activeCategory === category.id ? "active" : ""}
+            onClick={() => setActiveCategory(category.id)}
+          >
+            {category.label}
+          </button>
+        ))}
+      </div>
+
+      {loading && <p>Loading impact analysis...</p>}
+      {!loading && error && <p className="error-text">{error}</p>}
+      {!loading && !error && analysis && (
+        <>
+          <div className="metric-grid">
+            <div className="metric-box">
+              <p className="ticket-count">{analysis.analyzed_tickets}</p>
+              <p className="ticket-count-label">Tickets analyzed</p>
+            </div>
+            <div className="metric-box">
+              <p className="ticket-count">{analysis.module_counts?.length ?? 0}</p>
+              <p className="ticket-count-label">Impact modules</p>
+            </div>
+            <div className="metric-box">
+              <p className="ticket-count">{analysis.client_month_trends?.length ?? 0}</p>
+              <p className="ticket-count-label">Top clients trended</p>
+            </div>
+          </div>
+
+          <div className="analysis-grid">
+            <section className="analysis-panel">
+              <div className="section-heading">
+                <h2>Impact Module Volume</h2>
+                <p>Vertical bar chart by module</p>
+              </div>
+              {topModules.length ? (
+                <VerticalBarChart data={topModules} />
+              ) : (
+                <p>No impact module data found.</p>
+              )}
+            </section>
+            <section className="analysis-panel">
+              <div className="section-heading">
+                <h2>Client Trendline</h2>
+                <p>Monthly ticket trend for top clients</p>
+              </div>
+              {clientTrends.length ? (
+                <TrendLineChart series={clientTrends} />
+              ) : (
+                <p>No trend data found.</p>
+              )}
+            </section>
+          </div>
+
+          <section className="analysis-panel">
+            <div className="section-heading">
+              <h2>Client Module Split</h2>
+              <p>Counts by client and impact module</p>
+            </div>
+            <div className="table-wrapper compact">
+              <table className="ticket-table">
+                <thead>
+                  <tr>
+                    <th>Client Name</th>
+                    <th>Impact Module</th>
+                    <th>Tickets</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {analysis.client_module_counts?.map((row) => (
+                    <tr key={`${row.client_name}-${row.module}`}>
+                      <td>{row.client_name}</td>
+                      <td>{row.module}</td>
+                      <td>{row.count}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function App() {
   return (
     <div className="app-shell">
@@ -342,12 +593,14 @@ export default function App() {
         <nav>
           <NavLink to="/">Dashboard</NavLink>
           <NavLink to="/assignee-matrix">Assignee Matrix</NavLink>
+          <NavLink to="/impact-module">Analyze Impact Module</NavLink>
         </nav>
       </header>
       <main className="main-content">
         <Routes>
           <Route path="/" element={<DashboardPage />} />
           <Route path="/assignee-matrix" element={<AssigneeMatrixPage />} />
+          <Route path="/impact-module" element={<ImpactModulePage />} />
         </Routes>
       </main>
     </div>
