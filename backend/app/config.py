@@ -15,6 +15,9 @@ class Config:
     JIRA_JQL = os.getenv("JIRA_JQL", "ORDER BY updated DESC")
     JIRA_CLIENT_NAME_FIELD_ID = os.getenv("JIRA_CLIENT_NAME_FIELD_ID", "customfield_11555")
     JIRA_L0_ASSIGNEE_FIELD_ID = os.getenv("JIRA_L0_ASSIGNEE_FIELD_ID", "customfield_11680")
+    JIRA_TES_SUPERVISION_FIELD_ID = os.getenv(
+        "JIRA_TES_SUPERVISION_FIELD_ID", "customfield_11672"
+    )
     JIRA_PCMC_INCLUSION_DATE_FIELD_ID = os.getenv(
         "JIRA_PCMC_INCLUSION_DATE_FIELD_ID", "customfield_11590"
     )

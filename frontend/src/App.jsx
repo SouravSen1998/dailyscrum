@@ -433,6 +433,58 @@ function DashboardPage() {
 }
 
 function AssigneeMatrixPage() {
+  const [matrixData, setMatrixData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    const fetchMatrix = async () => {
+      try {
+        setLoading(true);
+        const response = await client.get("/assignee-matrix/");
+        setMatrixData(response.data?.data ?? null);
+        setError("");
+      } catch (fetchError) {
+        const message =
+          fetchError?.response?.data?.message ||
+          fetchError?.message ||
+          "Unable to load assignee matrix.";
+        setError(message);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchMatrix();
+  }, []);
+
+  const roleTotals =
+    matrixData?.role_totals?.map((row) => ({
+      module: row.role,
+      count: row.count,
+    })) ?? [];
+  const activeWorkload =
+    matrixData?.matrix
+      ?.filter((row) => row.active_tickets > 0)
+      .sort((first, second) => second.active_tickets - first.active_tickets)
+      .slice(0, 12)
+      .map((row) => ({
+        module: `${row.person} | ${row.role}`,
+        count: row.active_tickets,
+      })) ?? [];
+  const resolvedTrend = matrixData?.resolved_assignee_trends ?? [];
+  const trendDates = matrixData?.resolved_by_date?.map((point) => point.date) ?? [];
+  const recentDates = trendDates.slice(-30);
+  const resolvedTrendSeries = resolvedTrend.map((row) => ({
+    client_name: row.person,
+    points: row.points
+      .filter((point) => recentDates.includes(point.date))
+      .map((point) => ({
+        month: point.date.slice(5),
+        count: point.count,
+      })),
+  }));
+
   return (
     <div className="page">
       <div className="page-header">
@@ -440,8 +492,123 @@ function AssigneeMatrixPage() {
           <p className="eyebrow">Daily Scrum</p>
           <h1>Assignee Matrix</h1>
         </div>
+        <p className="last-updated">L0, Assignee, TES Supervision</p>
       </div>
-      <p>Assignee-wise workload matrix will be built here.</p>
+
+      {loading && <p>Loading assignee matrix...</p>}
+      {!loading && error && <p className="error-text">{error}</p>}
+      {!loading && !error && matrixData && (
+        <>
+          <div className="metric-grid">
+            <div className="metric-box">
+              <p className="ticket-count">{matrixData.active_total}</p>
+              <p className="ticket-count-label">Active tickets</p>
+            </div>
+            <div className="metric-box">
+              <p className="ticket-count">{matrixData.resolved_total}</p>
+              <p className="ticket-count-label">Resolved tickets</p>
+            </div>
+            <div className="metric-box">
+              <p className="ticket-count">{matrixData.matrix?.length ?? 0}</p>
+              <p className="ticket-count-label">People and role rows</p>
+            </div>
+          </div>
+
+          <div className="analysis-grid">
+            <section className="analysis-panel">
+              <div className="section-heading">
+                <h2>Tickets Assigned By Role</h2>
+                <p>L0 Assignee, Assignee, TES Supervision</p>
+              </div>
+              {roleTotals.length ? (
+                <VerticalBarChart data={roleTotals} />
+              ) : (
+                <p>No assigned ticket data found.</p>
+              )}
+            </section>
+            <section className="analysis-panel">
+              <div className="section-heading">
+                <h2>Resolved Date Trend</h2>
+                <p>Top assignees, last 30 resolved dates</p>
+              </div>
+              {resolvedTrendSeries.length ? (
+                <TrendLineChart series={resolvedTrendSeries} />
+              ) : (
+                <p>No resolved trend data found.</p>
+              )}
+            </section>
+          </div>
+
+          <div className="analysis-grid">
+            <section className="analysis-panel">
+              <div className="section-heading">
+                <h2>Active Workload</h2>
+                <p>Top assigned tickets by person and role</p>
+              </div>
+              {activeWorkload.length ? (
+                <VerticalBarChart data={activeWorkload} />
+              ) : (
+                <p>No active workload found.</p>
+              )}
+            </section>
+            <section className="analysis-panel">
+              <div className="section-heading">
+                <h2>Resolved Tickets By Date</h2>
+                <p>Daily resolved ticket count</p>
+              </div>
+              <div className="table-wrapper compact">
+                <table className="ticket-table">
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Resolved Tickets</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {matrixData.resolved_by_date?.slice(-30).map((row) => (
+                      <tr key={row.date}>
+                        <td>{row.date}</td>
+                        <td>{row.count}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          </div>
+
+          <section className="analysis-panel">
+            <div className="section-heading">
+              <h2>Assignee Matrix</h2>
+              <p>Active and resolved ticket ownership</p>
+            </div>
+            <div className="table-wrapper compact">
+              <table className="ticket-table">
+                <thead>
+                  <tr>
+                    <th>Role</th>
+                    <th>Person</th>
+                    <th>Active Tickets</th>
+                    <th>Resolved Tickets</th>
+                    <th>Total Tickets</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {matrixData.matrix?.map((row) => (
+                    <tr key={`${row.role}-${row.person}`}>
+                      <td>{row.role}</td>
+                      <td>{row.person}</td>
+                      <td>{row.active_tickets}</td>
+                      <td>{row.resolved_tickets}</td>
+                      <td>{row.total_tickets}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </>
+      )}
     </div>
   );
 }
